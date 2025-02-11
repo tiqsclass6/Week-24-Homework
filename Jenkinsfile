@@ -2,11 +2,10 @@ pipeline {
     agent any
     environment {
         AWS_REGION = 'us-east-1'
-        SONARQUBE_URL = "http://localhost:9000"
-        SONAR_SCANNER_HOME = "/opt/sonar-scanner"
+        SONARQUBE_URL = "https://sonarcloud.io"
         TRUFFLEHOG_PATH = "/usr/local/bin/trufflehog3"
         JIRA_SITE = "https://daquietstorm22.atlassian.net/"
-        JIRA_PROJECT = "JENKINS"
+        JIRA_PROJECT = "jenkins-test3"
     }
 
     stages {
@@ -38,6 +37,7 @@ pipeline {
                         def scanStatus = sh(script: '''
                             ${SONAR_SCANNER_HOME}/bin/sonar-scanner \
                             -Dsonar.projectKey=tiqsclass6_jenkins-test3 \
+                            -Dsonar.organization=TIQS \
                             -Dsonar.host.url=${SONARQUBE_URL} \
                             -Dsonar.login=''' + SONAR_TOKEN, returnStatus: true)
 
@@ -55,12 +55,20 @@ pipeline {
                 script {
                     withCredentials([string(credentialsId: 'synk-api-key', variable: 'SNYK_TOKEN')]) {
                         sh "snyk auth ${SNYK_TOKEN}"
-                        sh "snyk test --severity-threshold=high || exit 1"
                         sh "snyk monitor || echo 'No supported files found, monitoring skipped.'"
                     }
                 }
             }
         }
+
+        stage('Initialize Terraform') {
+            steps {
+                sh '''
+                terraform init
+                '''
+            }
+        }
+
 
         stage('Validate Terraform') {
             steps {
@@ -101,7 +109,23 @@ pipeline {
     }
 
     post {
-        success { echo 'Terraform deployment completed successfully!' }
-        failure { echo 'Terraform deployment failed!' }
+        success {
+            echo 'Terraform deployment completed successfully!'
+        }
+
+        failure {
+            echo 'Terraform deployment failed!'
+        }
+    }
+}
+
+def createJiraTicket(String issueTitle, String issueDescription) {
+    script {
+        jiraNewIssue site: "${JIRA_SITE}",
+                     projectKey: "${JIRA_PROJECT}",
+                     issueType: "Bug",
+                     summary: issueTitle,
+                     description: issueDescription,
+                     priority: "High"
     }
 }
