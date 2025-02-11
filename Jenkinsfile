@@ -37,7 +37,7 @@ pipeline {
                         def scanStatus = sh(script: '''
                             ${SONAR_SCANNER_HOME}/bin/sonar-scanner \
                             -Dsonar.projectKey=tiqsclass6_jenkins-test3 \
-                            -Dsonar.organization=TIQS \
+                            -Dsonar.organization=tiqs \
                             -Dsonar.host.url=${SONARQUBE_URL} \
                             -Dsonar.login=''' + SONAR_TOKEN, returnStatus: true)
 
