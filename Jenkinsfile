@@ -34,7 +34,7 @@ pipeline {
         stage('Static Code Analysis (SAST)') {
             steps {
                 script {
-                    withCredentials([string(credentialsId: 'SonarQube_Jenkins', variable: 'SONAR_TOKEN')]) {
+                    withCredentials([string(credentialsId: 'sonarqube-api-key', variable: 'SONAR_TOKEN')]) {
                         def scanStatus = sh(script: '''
                             ${SONAR_SCANNER_HOME}/bin/sonar-scanner \
                             -Dsonar.projectKey=tiqsclass6_jenkins-test3 \
@@ -53,7 +53,7 @@ pipeline {
         stage('Snyk Security Scan') {
             steps {
                 script {
-                    withCredentials([string(credentialsId: 'SNYK_TOKEN', variable: 'SNYK_TOKEN')]) {
+                    withCredentials([string(credentialsId: 'synk-api-key', variable: 'SNYK_TOKEN')]) {
                         sh "snyk auth ${SNYK_TOKEN}"
                         sh "snyk test --severity-threshold=high || exit 1"
                         sh "snyk monitor || echo 'No supported files found, monitoring skipped.'"
