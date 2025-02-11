@@ -3,21 +3,18 @@ pipeline {
     environment {
         AWS_REGION = 'us-east-1'
         SONARQUBE_URL = "https://sonarcloud.io"
+        SONAR_SCANNER_HOME = "/opt/sonar-scanner"
+        SONAR_TOKEN = credentials('sonarqube-api-key')
         TRUFFLEHOG_PATH = "/usr/local/bin/trufflehog3"
-        JIRA_SITE = "https://daquietstorm22.atlassian.net/"
+        JIRA_SITE = "daquietstorm22"
         JIRA_PROJECT = "jenkins-test3"
     }
 
     stages {
         stage('Set AWS Credentials') {
             steps {
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'Jenkins3'
-                ]]) {
+                withCredentials([aws(credentialsId: 'Jenkins3', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
                     sh '''
-                    export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
-                    export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
                     aws sts get-caller-identity
                     '''
                 }
@@ -34,12 +31,13 @@ pipeline {
             steps {
                 script {
                     withCredentials([string(credentialsId: 'sonarqube-api-key', variable: 'SONAR_TOKEN')]) {
-                        def scanStatus = sh(script: '''
+                        def scanStatus = sh(script: """
                             ${SONAR_SCANNER_HOME}/bin/sonar-scanner \
                             -Dsonar.projectKey=tiqsclass6_jenkins-test3 \
                             -Dsonar.organization=tiqs \
                             -Dsonar.host.url=${SONARQUBE_URL} \
-                            -Dsonar.login=''' + SONAR_TOKEN, returnStatus: true)
+                            -Dsonar.login=${SONAR_TOKEN}
+                        """, returnStatus: true)
 
                         if (scanStatus != 0) {
                             createJiraTicket("Static Code Analysis Failed", "SonarQube scan detected issues in your code.")
@@ -55,7 +53,10 @@ pipeline {
                 script {
                     withCredentials([string(credentialsId: 'synk-api-key', variable: 'SNYK_TOKEN')]) {
                         sh "snyk auth ${SNYK_TOKEN}"
-                        sh "snyk monitor || echo 'No supported files found, monitoring skipped.'"
+                        def snykStatus = sh(script: "snyk monitor", returnStatus: true)
+                        if (snykStatus != 0) {
+                            echo "No supported files found. Skipping Snyk monitoring."
+                        }
                     }
                 }
             }
@@ -63,12 +64,9 @@ pipeline {
 
         stage('Initialize Terraform') {
             steps {
-                sh '''
-                terraform init
-                '''
+                sh 'terraform init'
             }
         }
-
 
         stage('Validate Terraform') {
             steps {
@@ -78,13 +76,8 @@ pipeline {
 
         stage('Plan Terraform') {
             steps {
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'Jenkins3'
-                ]]) {
+                withCredentials([aws(credentialsId: 'Jenkins3', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
                     sh '''
-                    export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
-                    export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
                     terraform plan -out=tfplan
                     '''
                 }
@@ -94,13 +87,8 @@ pipeline {
         stage('Apply Terraform') {
             steps {
                 input message: "Approve Terraform Apply?", ok: "Deploy"
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'Jenkins3'
-                ]]) {
+                withCredentials([aws(credentialsId: 'Jenkins3', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
                     sh '''
-                    export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
-                    export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
                     terraform apply -auto-approve tfplan
                     '''
                 }
@@ -121,11 +109,12 @@ pipeline {
 
 def createJiraTicket(String issueTitle, String issueDescription) {
     script {
-        jiraNewIssue site: "${JIRA_SITE}",
+        jiraNewIssue site: "daquietstorm22",
                      projectKey: "${JIRA_PROJECT}",
                      issueType: "Bug",
                      summary: issueTitle,
                      description: issueDescription,
-                     priority: "High"
+                     priority: "High",
+                     credentialsId: "jira-credentials-id" // Ensure Credentials Exist
     }
 }
