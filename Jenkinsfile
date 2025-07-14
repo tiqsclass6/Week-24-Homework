@@ -3,21 +3,20 @@ pipeline {
 
     environment {
         AWS_REGION = 'us-east-1'
+        SONARQUBE_URL = 'https://sonarcloud.io'
+        SONAR_SCANNER_HOME = '/opt/sonar-scanner-5.0.1.3006-linux'
+        PATH = "${SONAR_SCANNER_HOME}/bin:${env.PATH}"
         SNYK_ORG = '67615456-3e82-4935-9968-23e1de24cd66'
         SNYK_PROJECT = 'jenkins-test3'
         TRUFFLEHOG_PATH = "/usr/local/bin/trufflehog3"
         JIRA_SITE = 'jira-prod'
         JIRA_PROJECT = 'JT'
-        SONARQUBE_URL = "https://sonarcloud.io"
     }
 
     stages {
         stage('Set AWS Credentials') {
             steps {
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'Jenkins3'
-                ]]) {
+                withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'Jenkins3' ]]) {
                     sh '''
                     echo "Verifying AWS Credentials..."
                     export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
@@ -37,13 +36,34 @@ pipeline {
         stage('Static Code Analysis (SAST) - SonarQube') {
             steps {
                 withCredentials([string(credentialsId: 'SONARQUBE_TOKEN', variable: 'SONAR_TOKEN')]) {
-                    sh '''
-                        sonar-scanner \
-                          -Dsonar.projectKey=tiqsclass6_jenkins-test3 \
-                          -Dsonar.organization=tiqs \
-                          -Dsonar.host.url=$SONARQUBE_URL \
-                          -Dsonar.login=$SONAR_TOKEN
-                    '''
+                    script {
+                        sh 'sonar-scanner --version || echo "SonarScanner not found!"'
+                        def scanStatus = sh(script: '''
+                            sonar-scanner \
+                              -Dsonar.projectKey=tiqsclass6_jenkins-test3 \
+                              -Dsonar.organization=tiqs \
+                              -Dsonar.host.url=$SONARQUBE_URL \
+                              -Dsonar.login=$SONAR_TOKEN
+                        ''', returnStatus: true)
+
+                        if (scanStatus != 0) {
+                            def inputResult = input(
+                                message: 'SonarQube scan failed. Enter reason for failure (this will be logged to Jira):',
+                                parameters: [
+                                    text(name: 'REASON', defaultValue: 'SonarQube scan found critical issues', description: 'Describe the reason')
+                                ]
+                            )
+
+                            jiraNewIssue site: env.JIRA_SITE,
+                                         projectKey: env.JIRA_PROJECT,
+                                         issueType: "Bug",
+                                         summary: "Static Code Analysis Failed",
+                                         description: inputResult,
+                                         priority: "High"
+
+                            error("SonarQube scan failed!")
+                        }
+                    }
                 }
             }
         }
@@ -64,7 +84,12 @@ pipeline {
                                     text(name: 'REASON', defaultValue: 'Snyk scan found security vulnerabilities', description: 'Describe the reason')
                                 ]
                             )
-                            createJiraTicket("Snyk Security Scan Failed", inputResult)
+                            jiraNewIssue site: env.JIRA_SITE,
+                                         projectKey: env.JIRA_PROJECT,
+                                         issueType: "Bug",
+                                         summary: "Snyk Security Scan Failed",
+                                         description: inputResult,
+                                         priority: "High"
                             error("Snyk scan failed!")
                         }
                     }
@@ -80,10 +105,7 @@ pipeline {
 
         stage('Plan Terraform') {
             steps {
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'Jenkins3'
-                ]]) {
+                withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'Jenkins3' ]]) {
                     sh '''
                     export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
                     export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
@@ -96,10 +118,7 @@ pipeline {
         stage('Apply Terraform') {
             steps {
                 input message: "Approve Terraform Apply?", ok: "Deploy"
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'Jenkins3'
-                ]]) {
+                withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'Jenkins3' ]]) {
                     sh '''
                     export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
                     export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
@@ -122,10 +141,7 @@ pipeline {
                     ]
                 )
                 if (destroyParams['DESTROY_RESOURCES']) {
-                    withCredentials([[
-                        $class: 'AmazonWebServicesCredentialsBinding',
-                        credentialsId: 'Jenkins3'
-                    ]]) {
+                    withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'Jenkins3' ]]) {
                         sh '''
                         export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
                         export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
@@ -146,18 +162,13 @@ pipeline {
                         text(name: 'REASON', defaultValue: 'Unknown error in pipeline', description: 'Describe what failed')
                     ]
                 )
-                createJiraTicket("Terraform Deployment Failure", inputResult)
+                jiraNewIssue site: env.JIRA_SITE,
+                             projectKey: env.JIRA_PROJECT,
+                             issueType: "Bug",
+                             summary: "Terraform Deployment Failure",
+                             description: inputResult,
+                             priority: "High"
             }
         }
     }
-}
-
-// Function to Create a Jira Ticket
-def createJiraTicket = { String issueTitle, String issueDescription ->
-    jiraNewIssue site: "${env.JIRA_SITE}",
-                 projectKey: "${env.JIRA_PROJECT}",
-                 issueType: "Bug",
-                 summary: issueTitle,
-                 description: issueDescription,
-                 priority: "High"
 }
