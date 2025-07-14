@@ -24,7 +24,7 @@ echo "
 <!doctype html>
 <html lang="en" class="h-100">
 <head>
-<title>Unsecure 80 - Load Balancer</title>
+<title>Port 80 (Unsecure) - Load Balancer</title>
 <body background=https://brazil-2025.s3.us-east-1.amazonaws.com/brazil-bg.jpg>
 </head>
 <div>
