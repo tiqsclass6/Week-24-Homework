@@ -1,20 +1,27 @@
 pipeline {
     agent any
+
     environment {
         AWS_REGION = 'us-east-1'
         SONARQUBE_URL = "https://sonarcloud.io"
+        SNYK_ORG = '67615456-3e82-4935-9968-23e1de24cd66'
+        SNYK_PROJECT = 'jenkins-test3'
         TRUFFLEHOG_PATH = "/usr/local/bin/trufflehog3"
-        }
+        JIRA_SITE = 'jira-prod'
+        JIRA_PROJECT = 'JT'
+    }
 
     stages {
         stage('Set AWS Credentials') {
             steps {
                 withCredentials([[
                     $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'Jenkins3' 
+                    credentialsId: 'Jenkins3'
                 ]]) {
                     sh '''
-                    echo "AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID"
+                    echo "Verifying AWS Credentials..."
+                    export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
+                    export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
                     aws sts get-caller-identity
                     '''
                 }
@@ -23,52 +30,63 @@ pipeline {
 
         stage('Checkout Code') {
             steps {
-                git branch: 'main', url: 'https://github.com/tiqsclass6/jenkins-test3'
+                git branch: 'main', url: 'https://github.com/tiqsclass6/Week-24-Homework'
             }
         }
 
-        // Security Scans
-        stage('Static Code Analysis (SAST)') {
+        stage('Static Code Analysis (SAST) - SonarQube') {
             steps {
-                script {
-                    withCredentials([string(credentialsId: 'SONARQUBE_TOKEN', variable: 'SONAR_TOKEN')]) {
-                        def scanStatus = sh(script: '''
-                            ${SONAR_SCANNER_HOME}/bin/sonar-scanner \
-                            -Dsonar.projectKey=tiqsclass6_jenkins-test3 \
-                            -Dsonar.organization=tiqs \
-                            -Dsonar.host.url=${SONARQUBE_URL} \
-                            -Dsonar.login=''' + SONAR_TOKEN, returnStatus: true)
+                withCredentials([string(credentialsId: 'SONARQUBE_TOKEN', variable: 'SONAR_TOKEN')]) {
+                    script {
+                        def scanStatus = sh(
+                            script: '''
+                                sonar-scanner \
+                                  -Dsonar.projectKey=tiqsclass6_jenkins-test3 \
+                                  -Dsonar.organization=tiqs \
+                                  -Dsonar.host.url=$SONARQUBE_URL \
+                                  -Dsonar.login=$SONAR_TOKEN
+                            ''',
+                            returnStatus: true
+                        )
 
                         if (scanStatus != 0) {
-                            createJiraTicket("Static Code Analysis Failed", "SonarQube scan detected issues in your code.")
-                            error("SonarQube found security vulnerabilities!")
+                            input message: 'SonarQube scan failed. Enter reason for failure (this will be logged to Jira):',
+                                  parameters: [text(name: 'REASON', defaultValue: 'SonarQube scan found critical issues', description: 'Describe the reason')]
+
+                            createJiraTicket("Static Code Analysis Failed", REASON)
+                            error("SonarQube scan failed!")
                         }
                     }
                 }
             }
         }
 
-
         stage('Snyk Security Scan') {
             steps {
                 script {
                     withCredentials([string(credentialsId: 'SNYK_AUTH_TOKEN', variable: 'SNYK_TOKEN')]) {
-                        sh "snyk auth ${SNYK_TOKEN}"
-                        sh "snyk monitor || echo 'No supported files found, monitoring skipped.'"
+                        def snykStatus = sh(script: '''
+                            snyk auth $SNYK_TOKEN
+                            snyk test || exit 1
+                        ''', returnStatus: true)
+
+                        if (snykStatus != 0) {
+                            input message: 'Snyk scan failed. Enter reason for failure (this will be logged to Jira):',
+                                  parameters: [text(name: 'REASON', defaultValue: 'Snyk scan found security vulnerabilities', description: 'Describe the reason')]
+
+                            createJiraTicket("Snyk Security Scan Failed", REASON)
+                            error("Snyk scan failed!")
+                        }
                     }
                 }
             }
         }
 
-
         stage('Initialize Terraform') {
             steps {
-                sh '''
-                terraform init
-                '''
+                sh 'terraform init'
             }
         }
-
 
         stage('Plan Terraform') {
             steps {
@@ -100,29 +118,55 @@ pipeline {
                 }
             }
         }
-
-
-    }   
+    }
 
     post {
         success {
-            echo 'Terraform deployment completed successfully!'
+            script {
+                echo 'Terraform deployment completed successfully.'
+
+                def destroyParams = input(
+                    message: "Destroy deployed Terraform infrastructure?",
+                    ok: "Yes, destroy",
+                    parameters: [
+                        booleanParam(name: 'DESTROY_RESOURCES', defaultValue: false, description: 'Check to confirm you want to destroy the deployed resources.')
+                    ]
+                )
+
+                if (destroyParams['DESTROY_RESOURCES']) {
+                    withCredentials([[
+                        $class: 'AmazonWebServicesCredentialsBinding',
+                        credentialsId: 'Jenkins3'
+                    ]]) {
+                        sh '''
+                        export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
+                        export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
+                        terraform destroy -auto-approve
+                        '''
+                    }
+                } else {
+                    echo 'Skipping Terraform destroy as per user input.'
+                }
+            }
         }
 
         failure {
-            echo 'Terraform deployment failed!'
+            script {
+                input message: 'Pipeline failed. Enter reason (this will be logged to Jira):',
+                      parameters: [text(name: 'REASON', defaultValue: 'Unknown error in pipeline', description: 'Describe what failed')]
+
+                createJiraTicket("Terraform Deployment Failure", REASON)
+            }
         }
     }
 }
 
 // Function to Create a Jira Ticket
-def createJiraTicket(String issueTitle, String issueDescription) {
-    script {
-        jiraNewIssue site: "${JIRA_SITE}",
-                     projectKey: "${JIRA_PROJECT}",
-                     issueType: "Bug",
-                     summary: issueTitle,
-                     description: issueDescription,
-                     priority: "High"
-    }
+def createJiraTicket = { String issueTitle, String issueDescription ->
+    jiraNewIssue site: "${env.JIRA_SITE}",
+                 projectKey: "${env.JIRA_PROJECT}",
+                 issueType: "Bug",
+                 summary: issueTitle,
+                 description: issueDescription,
+                 priority: "High"
 }

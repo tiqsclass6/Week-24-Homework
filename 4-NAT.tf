@@ -1,16 +1,16 @@
-resource "aws_eip" "NewYork-ElasticIP" {
-  # vpc = true
-
+resource "aws_eip" "USVA-ElasticIP" {
   tags = {
-    Name = "NewYork-ElasticIP"
+    Name = "USVA-ElasticIP"
   }
 }
 
-resource "aws_nat_gateway" "NewYork-Nat-GW" {
-  allocation_id = aws_eip.NewYork-ElasticIP.id
-  subnet_id     = aws_subnet.vpc-A-public-us-east-1a.id
+resource "aws_nat_gateway" "USVA-Nat-GW" {
+  allocation_id = aws_eip.USVA-ElasticIP.id
+  subnet_id     = aws_subnet.public-us-east-1a.id
 
   tags = {
-    Name = "NewYork-Nat-GW"
+    Name = "USVA-Nat-GW"
   }
+
+  depends_on = [aws_internet_gateway.ASG01_igw]
 }
