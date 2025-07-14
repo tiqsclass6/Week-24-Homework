@@ -3,20 +3,20 @@ pipeline {
 
     environment {
         AWS_REGION = 'us-east-1'
-        SONARQUBE_URL = "https://sonarcloud.io"
         SNYK_ORG = '67615456-3e82-4935-9968-23e1de24cd66'
         SNYK_PROJECT = 'jenkins-test3'
         TRUFFLEHOG_PATH = "/usr/local/bin/trufflehog3"
         JIRA_SITE = 'jira-prod'
         JIRA_PROJECT = 'JT'
+        SONARQUBE_URL = "https://sonarcloud.io"
     }
 
     stages {
         stage('Set AWS Credentials') {
             steps {
-                withCredentials([[ 
+                withCredentials([[
                     $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'Jenkins3' 
+                    credentialsId: 'Jenkins3'
                 ]]) {
                     sh '''
                     echo "Verifying AWS Credentials..."
@@ -35,28 +35,21 @@ pipeline {
         }
 
         stage('Static Code Analysis (SAST) - SonarQube') {
+            agent {
+                docker {
+                    image 'sonarsource/sonar-scanner-cli:5.0.1'
+                    args '-v $HOME/.sonar:/opt/sonar-scanner/.sonar'
+                }
+            }
             steps {
                 withCredentials([string(credentialsId: 'SONARQUBE_TOKEN', variable: 'SONAR_TOKEN')]) {
-                    script {
-                        def scanStatus = sh(
-                            script: '''
-                                sonar-scanner \
-                                  -Dsonar.projectKey=tiqsclass6_jenkins-test3 \
-                                  -Dsonar.organization=tiqs \
-                                  -Dsonar.host.url=$SONARQUBE_URL \
-                                  -Dsonar.login=$SONAR_TOKEN
-                            ''',
-                            returnStatus: true
-                        )
-
-                        if (scanStatus != 0) {
-                            input message: 'SonarQube scan failed. Enter reason for failure (this will be logged to Jira):',
-                                  parameters: [text(name: 'REASON', defaultValue: 'SonarQube scan found critical issues', description: 'Describe the reason')]
-
-                            createJiraTicket("Static Code Analysis Failed", REASON)
-                            error("SonarQube scan failed!")
-                        }
-                    }
+                    sh '''
+                        sonar-scanner \
+                          -Dsonar.projectKey=tiqsclass6_jenkins-test3 \
+                          -Dsonar.organization=tiqs \
+                          -Dsonar.host.url=$SONARQUBE_URL \
+                          -Dsonar.login=$SONAR_TOKEN
+                    '''
                 }
             }
         }
@@ -90,9 +83,9 @@ pipeline {
 
         stage('Plan Terraform') {
             steps {
-                withCredentials([[ 
+                withCredentials([[
                     $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'Jenkins3' 
+                    credentialsId: 'Jenkins3'
                 ]]) {
                     sh '''
                     export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
@@ -106,9 +99,9 @@ pipeline {
         stage('Apply Terraform') {
             steps {
                 input message: "Approve Terraform Apply?", ok: "Deploy"
-                withCredentials([[ 
+                withCredentials([[
                     $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'Jenkins3' 
+                    credentialsId: 'Jenkins3'
                 ]]) {
                     sh '''
                     export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
@@ -134,9 +127,9 @@ pipeline {
                 )
 
                 if (destroyParams['DESTROY_RESOURCES']) {
-                    withCredentials([[ 
+                    withCredentials([[
                         $class: 'AmazonWebServicesCredentialsBinding',
-                        credentialsId: 'Jenkins3' 
+                        credentialsId: 'Jenkins3'
                     ]]) {
                         sh '''
                         export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
