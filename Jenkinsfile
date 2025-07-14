@@ -71,7 +71,7 @@ pipeline {
         stage('Snyk Security Scan') {
             steps {
                 script {
-                    withCredentials([string(credentialsId: 'SNYK_AUTH_TOKEN', variable: 'SNYK_TOKEN')]) {
+                    withCredentials([string(credentialsId: 'SNYK_TOKEN', variable: 'SNYK_TOKEN')]) {
                         def snykStatus = sh(script: '''
                             snyk auth $SNYK_TOKEN
                             snyk test || exit 1
