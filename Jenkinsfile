@@ -9,8 +9,6 @@ pipeline {
         SNYK_ORG = '67615456-3e82-4935-9968-23e1de24cd66'
         SNYK_PROJECT = 'jenkins-test3'
         TRUFFLEHOG_PATH = "/usr/local/bin/trufflehog3"
-        JIRA_SITE = 'jira-prod'
-        JIRA_PROJECT = 'JT'
     }
 
     stages {
@@ -48,22 +46,12 @@ pipeline {
 
                         if (scanStatus != 0) {
                             def inputResult = input(
-                                message: 'SonarQube scan failed. Enter reason for failure (this will be logged to Jira):',
+                                message: 'SonarQube scan failed. Enter reason for failure:',
                                 parameters: [
                                     text(name: 'REASON', defaultValue: 'SonarQube scan found critical issues', description: 'Describe the reason')
                                 ]
                             )
-
-                            jiraNewIssue site: env.JIRA_SITE,
-                                         fields: [
-                                             project     : [key: env.JIRA_PROJECT],
-                                             summary     : "Static Code Analysis Failed",
-                                             description : inputResult,
-                                             issuetype   : [name: "Bug"],
-                                             priority    : [name: "High"]
-                                         ]
-
-                            error("SonarQube scan failed!")
+                            error("SonarQube scan failed: ${inputResult}")
                         }
                     }
                 }
@@ -81,20 +69,12 @@ pipeline {
 
                         if (snykStatus != 0) {
                             def inputResult = input(
-                                message: 'Snyk scan failed. Enter reason for failure (this will be logged to Jira):',
+                                message: 'Snyk scan failed. Enter reason for failure:',
                                 parameters: [
                                     text(name: 'REASON', defaultValue: 'Snyk scan found security vulnerabilities', description: 'Describe the reason')
                                 ]
                             )
-                            jiraNewIssue site: env.JIRA_SITE,
-                                         fields: [
-                                             project     : [key: env.JIRA_PROJECT],
-                                             summary     : "Snyk Security Scan Failed",
-                                             description : inputResult,
-                                             issuetype   : [name: "Bug"],
-                                             priority    : [name: "High"]
-                                         ]
-                            error("Snyk scan failed!")
+                            error("Snyk scan failed: ${inputResult}")
                         }
                     }
                 }
@@ -161,19 +141,12 @@ pipeline {
         failure {
             script {
                 def inputResult = input(
-                    message: 'Pipeline failed. Enter reason (this will be logged to Jira):',
+                    message: 'Pipeline failed. Enter reason:',
                     parameters: [
                         text(name: 'REASON', defaultValue: 'Unknown error in pipeline', description: 'Describe what failed')
                     ]
                 )
-                jiraNewIssue site: env.JIRA_SITE,
-                             fields: [
-                                 project     : [key: env.JIRA_PROJECT],
-                                 summary     : "Terraform Deployment Failure",
-                                 description : inputResult,
-                                 issuetype   : [name: "Bug"],
-                                 priority    : [name: "High"]
-                             ]
+                echo "Pipeline failed: ${inputResult}"
             }
         }
     }
