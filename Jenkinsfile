@@ -55,11 +55,13 @@ pipeline {
                             )
 
                             jiraNewIssue site: env.JIRA_SITE,
-                                         projectKey: env.JIRA_PROJECT,
-                                         issueType: "Bug",
-                                         summary: "Static Code Analysis Failed",
-                                         description: inputResult,
-                                         priority: "High"
+                                         fields: [
+                                             project     : [key: env.JIRA_PROJECT],
+                                             summary     : "Static Code Analysis Failed",
+                                             description : inputResult,
+                                             issuetype   : [name: "Bug"],
+                                             priority    : [name: "High"]
+                                         ]
 
                             error("SonarQube scan failed!")
                         }
@@ -71,7 +73,7 @@ pipeline {
         stage('Snyk Security Scan') {
             steps {
                 script {
-                    withCredentials([string(credentialsId: 'SNYK_TOKEN', variable: 'SNYK_TOKEN')]) {
+                    withCredentials([string(credentialsId: 'SNYK_AUTH_TOKEN', variable: 'SNYK_TOKEN')]) {
                         def snykStatus = sh(script: '''
                             snyk auth $SNYK_TOKEN
                             snyk test || exit 1
@@ -85,11 +87,13 @@ pipeline {
                                 ]
                             )
                             jiraNewIssue site: env.JIRA_SITE,
-                                         projectKey: env.JIRA_PROJECT,
-                                         issueType: "Bug",
-                                         summary: "Snyk Security Scan Failed",
-                                         description: inputResult,
-                                         priority: "High"
+                                         fields: [
+                                             project     : [key: env.JIRA_PROJECT],
+                                             summary     : "Snyk Security Scan Failed",
+                                             description : inputResult,
+                                             issuetype   : [name: "Bug"],
+                                             priority    : [name: "High"]
+                                         ]
                             error("Snyk scan failed!")
                         }
                     }
@@ -163,11 +167,13 @@ pipeline {
                     ]
                 )
                 jiraNewIssue site: env.JIRA_SITE,
-                             projectKey: env.JIRA_PROJECT,
-                             issueType: "Bug",
-                             summary: "Terraform Deployment Failure",
-                             description: inputResult,
-                             priority: "High"
+                             fields: [
+                                 project     : [key: env.JIRA_PROJECT],
+                                 summary     : "Terraform Deployment Failure",
+                                 description : inputResult,
+                                 issuetype   : [name: "Bug"],
+                                 priority    : [name: "High"]
+                             ]
             }
         }
     }
