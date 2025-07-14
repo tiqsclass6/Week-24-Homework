@@ -35,12 +35,6 @@ pipeline {
         }
 
         stage('Static Code Analysis (SAST) - SonarQube') {
-            agent {
-                docker {
-                    image 'sonarsource/sonar-scanner-cli:5.0.1'
-                    args '-v $HOME/.sonar:/opt/sonar-scanner/.sonar'
-                }
-            }
             steps {
                 withCredentials([string(credentialsId: 'SONARQUBE_TOKEN', variable: 'SONAR_TOKEN')]) {
                     sh '''
@@ -64,10 +58,13 @@ pipeline {
                         ''', returnStatus: true)
 
                         if (snykStatus != 0) {
-                            input message: 'Snyk scan failed. Enter reason for failure (this will be logged to Jira):',
-                                  parameters: [text(name: 'REASON', defaultValue: 'Snyk scan found security vulnerabilities', description: 'Describe the reason')]
-
-                            createJiraTicket("Snyk Security Scan Failed", REASON)
+                            def inputResult = input(
+                                message: 'Snyk scan failed. Enter reason for failure (this will be logged to Jira):',
+                                parameters: [
+                                    text(name: 'REASON', defaultValue: 'Snyk scan found security vulnerabilities', description: 'Describe the reason')
+                                ]
+                            )
+                            createJiraTicket("Snyk Security Scan Failed", inputResult)
                             error("Snyk scan failed!")
                         }
                     }
@@ -117,7 +114,6 @@ pipeline {
         success {
             script {
                 echo 'Terraform deployment completed successfully.'
-
                 def destroyParams = input(
                     message: "Destroy deployed Terraform infrastructure?",
                     ok: "Yes, destroy",
@@ -125,7 +121,6 @@ pipeline {
                         booleanParam(name: 'DESTROY_RESOURCES', defaultValue: false, description: 'Check to confirm you want to destroy the deployed resources.')
                     ]
                 )
-
                 if (destroyParams['DESTROY_RESOURCES']) {
                     withCredentials([[
                         $class: 'AmazonWebServicesCredentialsBinding',
@@ -145,10 +140,13 @@ pipeline {
 
         failure {
             script {
-                input message: 'Pipeline failed. Enter reason (this will be logged to Jira):',
-                      parameters: [text(name: 'REASON', defaultValue: 'Unknown error in pipeline', description: 'Describe what failed')]
-
-                createJiraTicket("Terraform Deployment Failure", REASON)
+                def inputResult = input(
+                    message: 'Pipeline failed. Enter reason (this will be logged to Jira):',
+                    parameters: [
+                        text(name: 'REASON', defaultValue: 'Unknown error in pipeline', description: 'Describe what failed')
+                    ]
+                )
+                createJiraTicket("Terraform Deployment Failure", inputResult)
             }
         }
     }
