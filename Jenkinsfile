@@ -61,6 +61,7 @@ pipeline {
             }
         }
 
+
         stage('Snyk Security Scan') {
             steps {
                 script {
@@ -82,9 +83,12 @@ pipeline {
             }
         }
 
+
         stage('Initialize Terraform') {
             steps {
-                sh 'terraform init'
+                sh '''
+                terraform init
+                '''
             }
         }
 
@@ -94,7 +98,13 @@ pipeline {
                     $class: 'AmazonWebServicesCredentialsBinding',
                     credentialsId: 'Jenkins3'
                 ]]) {
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'Jenkins3'
+                ]]) {
                     sh '''
+                    export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
+                    export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
                     export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
                     export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
                     terraform plan -out=tfplan
@@ -110,7 +120,13 @@ pipeline {
                     $class: 'AmazonWebServicesCredentialsBinding',
                     credentialsId: 'Jenkins3'
                 ]]) {
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'Jenkins3'
+                ]]) {
                     sh '''
+                    export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
+                    export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
                     export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
                     export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
                     terraform apply -auto-approve tfplan
@@ -118,7 +134,9 @@ pipeline {
                 }
             }
         }
-    }
+
+
+    }   
 
     post {
         success {
